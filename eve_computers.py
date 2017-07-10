@@ -77,73 +77,82 @@ import collections
 from multiprocessing import Pool, cpu_count
 
 # on hold: sarina, detritus, eskymak (old SUSE linux, waiting for CENTOS)
-hosts = ['galaxy', 'klatch', 'ogg', 'nina', 'gapa', 'sarita', 'nindra', 'ook', 'swires',
-         'carrot', 'tigerfly', 'sally', 'cuddy', 'havelock', 'tacticus', 'esme',
-         'gemma', 'esk', 'myron',
-         'morkie', 'klotz', 'quoth', 'quirm', 'shawn', 'ego', 'fate', 'irulan', 'hrun',
-         'koch', 'shelly', 'modo', 'moist']
+# hosts = ['galaxy', 'klatch', 'ogg', 'nina', 'gapa', 'sarita', 'nindra', 'ook', 'swires',
+#          'carrot', 'tigerfly', 'sally', 'cuddy', 'havelock', 'tacticus', 'esme',
+#          'gemma', 'esk', 'myron',
+#          'morkie', 'klotz', 'quoth', 'quirm', 'shawn', 'ego', 'fate', 'irulan', 'hrun',
+#          'koch', 'shelly', 'modo', 'moist']
+hosts = ['galaxy', 'klatch', 'ogg', 'nina', 'gapa']
+
+timeout = 2  # timeout for ncat in sec
 
 
-def receive_data(host):
-    try:
-        out = subprocess.check_output(['ncat', '--recv-only', host, '6556'], timeout=2)
-        print('{host} .. OK'.format(host=host))
-    except subprocess.TimeoutExpired as e:
-        print('{host} .. '.format(host=host), end='')
-        print('TIMEOUT EXPIRED: {e}'.format(e=e))
-        out = ''
-    except subprocess.CalledProcessError as e:
-        print('{host} .. '.format(host=host), end='')
-        print('CALLED PROCESS ERROR: {e}'.format(e=e))
-        out = ''
-    except Exception as e:
-        print('{host} .. '.format(host=host), end='')
-        print('UNKNOWN EXCEPTION: {e}'.format(e=e))
+class Host():
+    """Class description."""
 
-    return {host: out.decode('UTF-8') if out else str()}
+    def __init__(self, hostname, timeout=timeout):
+        self.hostname = hostname
+        self.result = []
+        try:
+            self.out = subprocess.check_output(['ncat', '--recv-only', self.hostname, '6556'], timeout=timeout)
+            self.result = self.out.decode('UTF-8')
+            self.received = True
+            self.received_msg = '{hostname} .. OK'.format(hostname=hostname)
+        except subprocess.TimeoutExpired as e:
+            self.received = False
+            self.received_msg = 'TIMEOUT EXPIRED: {e}'.format(e=e)
+        except subprocess.CalledProcessError as e:
+            self.received = False
+            self.received_msg = 'CALLED PROCESS ERROR: {e}'.format(e=e)
+        except Exception as e:
+            self.received = False
+            self.received_msg = 'UNKNOWN EXCEPTION: {e}'.format(e=e)
 
 
 def main():
     pool = Pool(cpu_count())
     # p = Pool(2)
-    result = pool.map(receive_data, hosts)
+    results = pool.map(Host, hosts)
     pool.close()
     pool.join()
 
     print("Done!")
+    for item in results:
+        print(item.hostname)
     # print(len(result), [key.keys() for key in result])
-    results = collections.defaultdict(list)
-    for d in result:
-        for key, val in d.items():
-            results[key] = val
+    # results = collections.defaultdict(list)
+    # for d in result:
+    #     for key, val in d.items():
+    #         results[key] = val
 
-    print("Done again!")
+    # print("Done again!")
 
 
-    print("Divide check_mk_agent results into dictionaries")
-    computers = collections.defaultdict(dict)
-    for host, output in results.items():
-        res = [item for item in re.split(r'(<<<.*?>>>)', output) if item]
-        for idx in range(0, len(res), 2):
-            new_key = res[idx].replace('<<<', '').replace('>>>', '')
-            if new_key in computers[host].keys():
-                computers[host].update({re.sub(new_key, '{}_2'.format(new_key), new_key): res[idx + 1].strip()})
-            else:
-                computers[host].update({new_key: res[idx + 1].strip()})
+    # print("Divide check_mk_agent results into dictionaries")
+    # computers = collections.defaultdict(dict)
+    # for host, output in results.items():
+    #     res = [item for item in re.split(r'(<<<.*?>>>)', output) if item]
+    #     for idx in range(0, len(res), 2):
+    #         new_key = res[idx].replace('<<<', '').replace('>>>', '')
+    #         if new_key in computers[host].keys():
+    #             computers[host].update({re.sub(new_key, '{}_2'.format(new_key), new_key): res[idx + 1].strip()})
+    #         else:
+    #             computers[host].update({new_key: res[idx + 1].strip()})
 
-    computers = collections.OrderedDict(sorted(computers.items()))
+    # computers = collections.OrderedDict(sorted(computers.items()))
 
-    for key, val in computers.items():
-        screen_info = val.get('monitor_info')
-        # if screen_info:
-        #     matches = re.findall(r'BorderDimensions.*$|(?:.*?EDID:)\s+([a-f\d\s]+)\s+', screen_info)
-        #     matches = [''.join(match.split()) for match in matches]
-        #     print(key, matches)
-        local_ip = val.get('local_ip', '?')
-        uptime = val.get('uptime_all', '?')
-        gpu_driver = val.get('gpu_driver', '?')
-        print('{host:<10} ... Local_IP = {ip:<12} Uptime = {uptime:<70} gpu_driver = {gpu_driver}'.format(
-            host=key, ip=local_ip, uptime=uptime, gpu_driver=gpu_driver.replace('\n', '')))
+    # for key, val in computers.items():
+    #     screen_info = val.get('monitor_info')
+    #     # if screen_info:
+    #     #     matches = re.findall(r'BorderDimensions.*$|(?:.*?EDID:)\s+([a-f\d\s]+)\s+', screen_info)
+    #     #     matches = [''.join(match.split()) for match in matches]
+    #     #     print(key, matches)
+    #     local_ip = val.get('local_ip', '?')
+    #     uptime = val.get('uptime_all', '?')
+    #     gpu_driver = val.get('gpu_driver', '?')
+    #     gpu_name = val.get('gpu_name', '?')
+    #     print('{host:<10} ... Local_IP = {ip:<12} gpu_driver = {gpu_driver: <15} gpu_name = {gpu_name}'.format(
+    #         host=key, ip=local_ip, gpu_driver=gpu_driver.replace('\n', ''), gpu_name=gpu_name))
 
 
     #
