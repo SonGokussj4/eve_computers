@@ -1,20 +1,4 @@
-# from pssh.pssh_client import ParallelSSHClient, SSHClient
-# from pssh.utils import load_private_key
-# from pswd import pswd
-# # pkey = load_private_key('/home/jverner/.ssh/known_hosts')
-
-# hosts = ['ogg', 'esme', 'klatch', 'carrot']
-# client = ParallelSSHClient(hosts, user='jverner', password=pswd)
-# # client = ParallelSSHClient(hosts, user='jverner')
-
-# cmd = 'cat /dev/shm/xrandrprops.info'
-# output = client.run_command(cmd, stop_on_errors=False)
-
-# # print(output)
-# for key, val in output.items():
-#     for item in val.stdout:
-#         print(item)
-
+#!/usr/bin/python3
 
 """ Available keys:
     check_mk                           ... Hostname (cuddy.konstru.evektor.cz)
@@ -68,23 +52,33 @@
     public_ip                          ... (194.212.223.78)
     location                           ... (KUNOVICE)
     screeninfo                         ... DUPLICITE  #TODO: Odstranit, duplicitni
+
+    ['local', 'cpu', 'mounts', 'cifsmounts', 'os_kernel', 'monitor_info', 'os_release', 'md', 'vbox_guest',
+    'dmi_memory_max', 'diskstat', 'job', 'gpu_name', 'gpu_driver', 'dmi_system', 'mem',
+    'ntp:cached(1499695070,30)', 'nfsmounts', 'logins', 'uptime_all', 'lscpu', 'memory_2', 'kernel', 'user',
+    'memory', 'df_2', 'lnx_if:sep(58)', 'check_mk', 'monitor_names', 'dmi_memory_array', 'postfix_mailq',
+    'drives', 'lnx_if', 'dmi_baseboard', 'cups_queues:cached(1499694841,300)', 'ps', 'uptime', 'os_distributor',
+    'nvidia', 'local_ip', 'chrony:cached(1499695070,30)', 'os_codename', 'df', 'dmi_bios', 'monitor_resolutions',
+    'dmi_processor', 'public_ip', 'tcp_conn_stats', 'location', 'dmi_memory']
 """
 
-
+import os
+from os.path import join, curdir, abspath
 import re
+import datetime
 import subprocess
 import collections
 from multiprocessing import Pool, cpu_count
 
 # on hold: sarina, detritus, eskymak (old SUSE linux, waiting for CENTOS)
-# hosts = ['galaxy', 'klatch', 'ogg', 'nina', 'gapa', 'sarita', 'nindra', 'ook', 'swires',
-#          'carrot', 'tigerfly', 'sally', 'cuddy', 'havelock', 'tacticus', 'esme',
-#          'gemma', 'esk', 'myron',
-#          'morkie', 'klotz', 'quoth', 'quirm', 'shawn', 'ego', 'fate', 'irulan', 'hrun',
-#          'koch', 'shelly', 'modo', 'moist']
-hosts = ['galaxy', 'klatch', 'ogg', 'nina', 'gapa']
+hosts = ['galaxy', 'klatch', 'ogg', 'nina', 'gapa', 'sarita', 'nindra', 'ook', 'swires',
+         'carrot', 'tigerfly', 'sally', 'cuddy', 'havelock', 'tacticus',  #'esme',
+         'gemma', 'esk', 'myron',
+         'morkie', 'klotz', 'quoth', 'quirm', 'shawn', 'ego', 'fate', 'irulan', 'hrun',
+         'koch', 'shelly', 'modo', 'moist']
+# hosts = ['galaxy', 'klatch', 'shawn', 'tacticus', 'gemma']
 
-timeout = 2  # timeout for ncat in sec
+timeout = 5  # timeout for ncat in sec
 
 
 class Host():
@@ -92,12 +86,16 @@ class Host():
 
     def __init__(self, hostname, timeout=timeout):
         self.hostname = hostname
-        self.result = []
+        self.received_list = []
+        self.results = {}
         try:
-            self.out = subprocess.check_output(['ncat', '--recv-only', self.hostname, '6556'], timeout=timeout)
-            self.result = self.out.decode('UTF-8')
+            self.out = subprocess.check_output(
+                ['ncat', '--recv-only', self.hostname, '6556'], timeout=timeout, stderr=subprocess.STDOUT)
+            self.received_list = self.out.decode('UTF-8')
             self.received = True
             self.received_msg = '{hostname} .. OK'.format(hostname=hostname)
+            self.results = self.__get_ncat_results()
+
         except subprocess.TimeoutExpired as e:
             self.received = False
             self.received_msg = 'TIMEOUT EXPIRED: {e}'.format(e=e)
@@ -108,61 +106,139 @@ class Host():
             self.received = False
             self.received_msg = 'UNKNOWN EXCEPTION: {e}'.format(e=e)
 
+    def __get_ncat_results(self):
+        if not self.received:
+            return None
+        results = collections.defaultdict(dict)
+        result_list = [item for item in re.split(r'(<<<.*?>>>)', self.received_list) if item]
+        for idx in range(0, len(result_list), 2):
+            new_key = result_list[idx].replace('<<<', '').replace('>>>', '')
+            if new_key in results.keys():
+                results.update({re.sub(new_key, '{}_2'.format(new_key), new_key): result_list[idx + 1].strip()})
+            else:
+                results.update({new_key: result_list[idx + 1].strip()})
+        return results
+
+    @property
+    def location(self):
+        return self.results.get('location')
+
+    @property
+    def cpu_name(self):
+        res = self.results.get('lscpu').split('\n')
+        model_name = [item for item in res if item.startswith('Model name:')][0]
+        return ' '.join(model_name.split())
+
+    @property
+    def cpu_details(self):
+        try:
+            res = self.results.get('lscpu').splitlines()
+        except Exception as e:
+            return '?/?=??'
+        threads = int([item for item in res if item.startswith('Thread(s) per core:')][0].split()[-1])
+        cores = int([item for item in res if item.startswith('Core(s) per socket')][0].split()[-1])
+        sockets = int([item for item in res if item.startswith('Socket(s):')][0].split()[-1])
+        cores_sum = sockets * cores
+        return '{sockets}/{cores}={count}{if_HT}'.format(
+            sockets=sockets, cores=cores, count=cores_sum,
+            if_HT=' ({}HT)'.format(cores_sum * 2) if threads >= 2 else '')
+
+    @property
+    def gpu_name(self):
+        return self.results.get('gpu_name').split('\n')[0]
+
+    @property
+    def gpu_driver(self):
+        return self.results.get('gpu_driver').split('\n')[1]  # TODO: Az to Tom rozesle, zmenit na [0]
+
+    @property
+    def os(self):
+        """CentOS 7.3"""
+        distrib = self.results.get('os_distributor').split('\n')[0]
+        release = '.'.join(self.results.get('os_release').split('\n')[0].split('.')[0:2])
+        return '{distrib} {release}'.format(distrib=distrib, release=release)
+
+    @property
+    def monitor(self):
+        """X"""
+        mon_res = self.results.get('monitor_resolutions')
+        # mon_names = self.results.get('monitor_names')
+        mon_info = self.results.get('monitor_info')
+
+        resolutions = re.findall(r'\d*x\d*', mon_res)
+        connectors = re.findall(r'^.*-[\d.]*', mon_res, flags=re.MULTILINE)
+
+        # names = [name.split('(')[0].strip() for name in mon_names.split('\n') if name]
+        # mon_names = dict(zip(connectors, names))
+        # print(names)
+
+        matches = re.findall(r'BorderDimensions.*$|(?:.*?EDID:)\s+([a-f\d\s]+)\s+', mon_info)
+        edids_encoded = [''.join(match.split()) for match in matches]
+
+        out = subprocess.check_output(['./monitor-names.sh', mon_info]).decode('UTF-8').splitlines()
+        names = [name.replace(' ', '-') for name in out]
+
+        edids_decoded = []
+        serial_numbers = []
+        for conn, edid, name, resol in zip(connectors, edids_encoded, names, resolutions):
+            filename = join(abspath(curdir), 'EDID__{host}__{connector}'.format(host=self.hostname, connector=conn))
+            with open(filename, 'w') as f:
+                f.writelines(edid)
+            proc = subprocess.Popen(['edid-decode', filename],
+                                    stdin=subprocess.PIPE, stdout=subprocess.PIPE, stderr=subprocess.STDOUT)
+            out, err = proc.communicate()
+            os.remove(filename)
+            edid_decoded = out.decode('UTF-8').splitlines()
+            edids_decoded.append(edid_decoded)
+
+            serial_number = [item.split(': ')[1] for item in edid_decoded if item.startswith('Serial number:')][0]
+            serial_numbers.append(serial_number)
+
+            build_date_splitted = [item for item in edid_decoded if item.startswith('Made week')][0].split()
+            week, year = build_date_splitted[2], build_date_splitted[4]
+
+            # dtm = datetime.datetime.strptime('{}W{} MON'.format(year, week), '%YW%U %a')
+            dtm = datetime.datetime.strptime('{}-W{}'.format(year, week) + '-0', "%Y-W%W-%w").date()
+            build_date = datetime.datetime.strftime(dtm, "%Y%m%d")
+
+            age_years = round((datetime.date.today() - dtm) / datetime.timedelta(days=365.2425), 2)
+
+            filename = join(abspath(curdir), 'EDID__{host}__{connector}__{name}__{resol}__{serial}__{build}__{age}'.format(
+                host=self.hostname, connector=conn, name=name, resol=resol, serial=serial_number, build=build_date,
+                age=age_years))
+            with open(filename, 'w') as f:
+                f.writelines(edid)
+                f.write('\n')
+                f.write('=' * 70)
+                f.write('\n')
+                f.writelines(['{line}\n'.format(line=line) for line in edid_decoded])
+            # os.remove(filename)
+
+
+
 
 def main():
     pool = Pool(cpu_count())
-    # p = Pool(2)
     results = pool.map(Host, hosts)
     pool.close()
     pool.join()
 
     print("Done!")
+    print('{: <10}{: <10}{: <10}{: <15}'.format(
+        'Host', 'Received', 'Location', 'CPU details'))
+
     for item in results:
-        print(item.hostname)
-    # print(len(result), [key.keys() for key in result])
-    # results = collections.defaultdict(list)
-    # for d in result:
-    #     for key, val in d.items():
-    #         results[key] = val
-
-    # print("Done again!")
-
-
-    # print("Divide check_mk_agent results into dictionaries")
-    # computers = collections.defaultdict(dict)
-    # for host, output in results.items():
-    #     res = [item for item in re.split(r'(<<<.*?>>>)', output) if item]
-    #     for idx in range(0, len(res), 2):
-    #         new_key = res[idx].replace('<<<', '').replace('>>>', '')
-    #         if new_key in computers[host].keys():
-    #             computers[host].update({re.sub(new_key, '{}_2'.format(new_key), new_key): res[idx + 1].strip()})
-    #         else:
-    #             computers[host].update({new_key: res[idx + 1].strip()})
-
-    # computers = collections.OrderedDict(sorted(computers.items()))
-
-    # for key, val in computers.items():
-    #     screen_info = val.get('monitor_info')
-    #     # if screen_info:
-    #     #     matches = re.findall(r'BorderDimensions.*$|(?:.*?EDID:)\s+([a-f\d\s]+)\s+', screen_info)
-    #     #     matches = [''.join(match.split()) for match in matches]
-    #     #     print(key, matches)
-    #     local_ip = val.get('local_ip', '?')
-    #     uptime = val.get('uptime_all', '?')
-    #     gpu_driver = val.get('gpu_driver', '?')
-    #     gpu_name = val.get('gpu_name', '?')
-    #     print('{host:<10} ... Local_IP = {ip:<12} gpu_driver = {gpu_driver: <15} gpu_name = {gpu_name}'.format(
-    #         host=key, ip=local_ip, gpu_driver=gpu_driver.replace('\n', ''), gpu_name=gpu_name))
-
-
-    #
-    #     print("uptime", key, uptime)
-
-
-
-    # for pc, data in computers.items():
-    #     print(data.keys())
-    #     print()
+        try:
+            if not item.received:
+                continue
+            # print()
+            print('{host: <10}{received: <10}{location: <10}{cpu_details: <15}'.format(
+                host=item.hostname, received=str(item.received), location=item.location, cpu_details=item.cpu_details))
+            # print(item.cpu_name, item.gpu_name, item.gpu_driver)
+            # print(item.os)
+            item.monitor
+        except Exception:
+            continue
 
 
 if __name__ == '__main__':
