@@ -70,14 +70,19 @@ import subprocess
 import collections
 from multiprocessing import Pool, cpu_count
 
+# DELL WARRANTY
+# https://gist.github.com/teroka/0720274b87b77fe7171f
+
 # on hold: sarina, detritus, eskymak (old SUSE linux, waiting for CENTOS)
 # OPEN SUSE: esk, myron, irulan
 hosts = ['galaxy', 'klatch', 'ogg', 'nina', 'gapa', 'sarita', 'nindra', 'ook', 'swires',
          'carrot', 'tigerfly', 'sally', 'cuddy', 'havelock', 'tacticus', 'esme',
          'gemma',
          'morkie', 'klotz', 'quoth', 'quirm', 'shawn', 'ego', 'fate', 'hrun',
-         'koch', 'shelly', 'modo', 'moist']
+         'koch', 'shelly', 'modo', 'moist', 'thia', 'myron', 'esk', 'eskymak', 'sarina', 'detritus',
+         'samara']
 # hosts = ['galaxy', 'klatch', 'shawn', 'tacticus', 'gemma']
+# hosts = ['fate']
 
 timeout = 5  # timeout for ncat in sec
 
@@ -150,11 +155,11 @@ class Host():
 
     @property
     def gpu_driver(self):
-        return self.results.get('gpu_driver').split('\n')[1]  # TODO: Az to Tom rozesle, zmenit na [0]
+        return self.results.get('gpu_driver').split('\n')[0]
 
     @property
     def os(self):
-        """CentOS 7.3"""
+        """Centos 7.3"""
         distrib = self.results.get('os_distributor').split('\n')[0]
         release = '.'.join(self.results.get('os_release').split('\n')[0].split('.')[0:2])
         return '{distrib} {release}'.format(distrib=distrib, release=release)
@@ -208,14 +213,14 @@ class Host():
             dtm = datetime.datetime.strptime('{}-W{}'.format(year, week) + '-0', "%Y-W%W-%w").date()
             build_date = datetime.datetime.strftime(dtm, "%Y%m%d")
 
+            # How many years (2 float) is the monitor old
             age_years = round((datetime.date.today() - dtm) / datetime.timedelta(days=365.2425), 2)
 
             monitors.append(monitor(
                 connector=conn, name=name, resolution=resol, serial=serial_number, build=build_date, age=age_years)
             )
-            filename = join(abspath(curdir), 'EDID__{host}__{connector}__{name}__{resol}__{serial}__{build}__{age}'.format(
-                host=self.hostname, connector=conn, name=name, resol=resol, serial=serial_number, build=build_date,
-                age=age_years))
+            filename = join(abspath(curdir), 'EDID__{host}__{connector}__{name}__{resol}__{serial}__{build}'.format(
+                host=self.hostname, connector=conn, name=name, resol=resol, serial=serial_number, build=build_date))
             with open(filename, 'w') as f:
                 f.writelines(edid)
                 f.write('\n')
@@ -299,15 +304,15 @@ def main():
         # print('DEBUG: item.received:', item.received)
         # print('DEBUG: item.location:', item.location)
         # print('DEBUG: item.cpu_details:', item.cpu_details)
-        print('{host: <10}{received: <10}{location: <10}{cpu_details: <15}{memory: <8}'
-              '{built_date: <12}{warranty: <9}{age: <5}'.format(
-                  host=item.hostname, received=str(item.received), location=item.location,
-                  cpu_details=item.cpu_details, memory=item.memory, built_date=item.computer_age,
-                  warranty=str(item.warranty_status[1]), age=item.warranty_status[0]))
+        # print('{host: <10}{received: <10}{location: <10}{cpu_details: <15}{memory: <8}'
+        #       '{built_date: <12}{warranty: <9}{age: <5}'.format(
+        #           host=item.hostname, received=str(item.received), location=item.location,
+        #           cpu_details=item.cpu_details, memory=item.memory, built_date=item.computer_age,
+        #           warranty=str(item.warranty_status[1]), age=item.warranty_status[0]))
 
-        # print(item.cpu_name, item.gpu_name, item.gpu_driver)
+        print(item.hostname, item.cpu_name, item.gpu_name, item.gpu_driver)
         # print(item.os)
-        # item.monitor
+        # print(item.monitor)
         # print(item.uptime)
         # print("[{size}] - {name}".format(size=item.drives[0].size, name=item.drives[0].name))
         # except Exception as e:
