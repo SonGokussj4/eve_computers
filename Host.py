@@ -311,8 +311,9 @@ class Host():
         64 GB
         """
         ret = self.results.get('dmi_memory_array').splitlines()
-        size = [line.split(':')[1].strip() for line in ret if 'Range Size: ' in line][0]
-        return size
+        sizes = [int(line.split(':')[1].replace('GB', '').strip())
+                 for line in ret if 'Range Size: ' in line]
+        return f'{sum(sizes)} GB'
 
     @property
     def computer_age(self):

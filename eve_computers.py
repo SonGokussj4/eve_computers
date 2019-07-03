@@ -81,6 +81,7 @@ hosts = [
     'cuddy', 'havelock', 'tacticus',
     'coin',
 ]
+# Windows: 'susan', 'kwinta'
 
 #=========================================
 # C6
@@ -91,6 +92,7 @@ hosts = [
 #     'bucket', 'ego', 'shawn',
 #     'quirm', 'quoth', 'klotz', 'morkie'
 # ]
+# Windows:
 
 #=========================================
 # Dalsi
@@ -98,6 +100,7 @@ hosts = [
 # hosts = [
 #     'esme', 'gemma', 'esk', 'sarina', 'myron', 'eskymak'
 # ]
+# Windows:
 
 # timeout = 5  # timeout for ncat in sec
 
