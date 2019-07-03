@@ -1,4 +1,4 @@
-#!/usr/bin/python3
+#!/expSW/SOFTWARE/bin/python3.7eve
 
 """ Available keys:
     check_mk                           ... Hostname (cuddy.konstru.evektor.cz)
