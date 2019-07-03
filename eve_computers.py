@@ -62,225 +62,44 @@
     'dmi_processor', 'public_ip', 'tcp_conn_stats', 'location', 'dmi_memory']
 """
 
-import os
-from os.path import join, curdir, abspath
-import re
-import datetime
-import subprocess
-import collections
 from multiprocessing import Pool, cpu_count
+from Host import Host
 
 # DELL WARRANTY
 # https://gist.github.com/teroka/0720274b87b77fe7171f
 
-# on hold: sarina, detritus, eskymak (old SUSE linux, waiting for CENTOS)
-# OPEN SUSE: esk, myron, irulan
-hosts = ['galaxy', 'klatch', 'ogg', 'nina', 'gapa', 'sarita', 'nindra', 'ook', 'swires',
-         'carrot', 'tigerfly', 'sally', 'cuddy', 'havelock', 'tacticus', 'esme',
-         'gemma',
-         'morkie', 'klotz', 'quoth', 'quirm', 'shawn', 'ego', 'fate', 'hrun',
-         'koch', 'shelly', 'modo', 'moist', 'thia', 'myron', 'esk', 'eskymak', 'sarina', 'detritus',
-         'samara']
-# hosts = ['galaxy', 'klatch', 'shawn', 'tacticus', 'gemma']
-# hosts = ['fate']
+#=========================================
+# C2
+#=========================================
+hosts = [
+    'winder',
+    'ogg', 'koch', 'tigerfly',
+    'klatch', 'nina', 'moist', 'sarita',
+    'nindra', 'morpork', 'sybil',
+    'cohen', 'winvoe', 'gapa', 'dorfl',
+    'modo', 'sally',
+    'cuddy', 'havelock', 'tacticus',
+    'coin',
+]
 
-timeout = 5  # timeout for ncat in sec
+#=========================================
+# C6
+#=========================================
+# hosts = [
+#     'samuel', 'detritus', 'buckleby',
+#     'hrun', 'shelly', 'fate',
+#     'bucket', 'ego', 'shawn',
+#     'quirm', 'quoth', 'klotz', 'morkie'
+# ]
 
+#=========================================
+# Dalsi
+#=========================================
+# hosts = [
+#     'esme', 'gemma', 'esk', 'sarina', 'myron', 'eskymak'
+# ]
 
-class Host():
-    """Class description."""
-
-    def __init__(self, hostname, timeout=timeout):
-        self.hostname = hostname
-        self.received_list = []
-        self.results = {}
-        try:
-            self.out = subprocess.check_output(
-                ['ncat', '--recv-only', self.hostname, '6556'], timeout=timeout, stderr=subprocess.STDOUT)
-            self.received_list = self.out.decode('UTF-8')
-            self.received = True
-            self.received_msg = '{hostname} .. OK'.format(hostname=hostname)
-            self.results = self.__get_ncat_results()
-
-        except subprocess.TimeoutExpired as e:
-            self.received = False
-            self.received_msg = 'TIMEOUT EXPIRED: {e}'.format(e=e)
-        except subprocess.CalledProcessError as e:
-            self.received = False
-            self.received_msg = 'CALLED PROCESS ERROR: {e}'.format(e=e)
-        except Exception as e:
-            self.received = False
-            self.received_msg = 'UNKNOWN EXCEPTION: {e}'.format(e=e)
-
-    def __get_ncat_results(self):
-        if not self.received:
-            return None
-        results = collections.defaultdict(dict)
-        result_list = [item for item in re.split(r'(<<<.*?>>>)', self.received_list) if item]
-        for idx in range(0, len(result_list), 2):
-            new_key = result_list[idx].replace('<<<', '').replace('>>>', '')
-            if new_key in results.keys():
-                results.update({re.sub(new_key, '{}_2'.format(new_key), new_key): result_list[idx + 1].strip()})
-            else:
-                results.update({new_key: result_list[idx + 1].strip()})
-        return results
-
-    @property
-    def location(self):
-        return self.results.get('location')
-
-    @property
-    def cpu_name(self):
-        res = self.results.get('lscpu').split('\n')
-        model_name = [item for item in res if item.startswith('Model name:')][0]
-        return ' '.join(model_name.split())
-
-    @property
-    def cpu_details(self):
-        try:
-            res = self.results.get('lscpu').splitlines()
-        except Exception as e:
-            return '?/?=??'
-        threads = int([item for item in res if item.startswith('Thread(s) per core:')][0].split()[-1])
-        cores = int([item for item in res if item.startswith('Core(s) per socket')][0].split()[-1])
-        sockets = int([item for item in res if item.startswith('Socket(s):')][0].split()[-1])
-        cores_sum = sockets * cores
-        return '{sockets}/{cores}={count}{if_HT}'.format(
-            sockets=sockets, cores=cores, count=cores_sum,
-            if_HT=' ({}HT)'.format(cores_sum * 2) if threads >= 2 else '')
-
-    @property
-    def gpu_name(self):
-        return self.results.get('gpu_name').split('\n')[0]
-
-    @property
-    def gpu_driver(self):
-        return self.results.get('gpu_driver').split('\n')[0]
-
-    @property
-    def os(self):
-        """Centos 7.3"""
-        distrib = self.results.get('os_distributor').split('\n')[0]
-        release = '.'.join(self.results.get('os_release').split('\n')[0].split('.')[0:2])
-        return '{distrib} {release}'.format(distrib=distrib, release=release)
-
-    @property
-    def kernel(self):
-        return self.results.get('os_kernel')
-
-    @property
-    def monitor(self):
-        """X"""
-        mon_res = self.results.get('monitor_resolutions')
-        # mon_names = self.results.get('monitor_names')
-        mon_info = self.results.get('monitor_info')
-
-        resolutions = re.findall(r'\d*x\d*', mon_res)
-        connectors = re.findall(r'^.*-[\d.]*', mon_res, flags=re.MULTILINE)
-
-        # names = [name.split('(')[0].strip() for name in mon_names.split('\n') if name]
-        # mon_names = dict(zip(connectors, names))
-        # print(names)
-
-        matches = re.findall(r'BorderDimensions.*$|(?:.*?EDID:)\s+([a-f\d\s]+)\s+', mon_info)
-        edids_encoded = [''.join(match.split()) for match in matches]
-
-        out = subprocess.check_output(['./monitor-names.sh', mon_info]).decode('UTF-8').splitlines()
-        names = [name.replace(' ', '-') for name in out]
-
-        monitor = collections.namedtuple('monitor', ['connector', 'name', 'resolution', 'serial', 'build', 'age'])
-        monitors = []
-        edids_decoded = []
-        serial_numbers = []
-        for conn, edid, name, resol in zip(connectors, edids_encoded, names, resolutions):
-            filename = join(abspath(curdir), 'EDID__{host}__{connector}'.format(host=self.hostname, connector=conn))
-            with open(filename, 'w') as f:
-                f.writelines(edid)
-            proc = subprocess.Popen(['edid-decode', filename],
-                                    stdin=subprocess.PIPE, stdout=subprocess.PIPE, stderr=subprocess.STDOUT)
-            out, err = proc.communicate()
-            os.remove(filename)
-            edid_decoded = out.decode('UTF-8').splitlines()
-            edids_decoded.append(edid_decoded)
-
-            serial_number = [item.split(': ')[1] for item in edid_decoded if item.startswith('Serial number:')][0]
-            serial_numbers.append(serial_number)
-
-            build_date_splitted = [item for item in edid_decoded if item.startswith('Made week')][0].split()
-            week, year = build_date_splitted[2], build_date_splitted[4]
-
-            # dtm = datetime.datetime.strptime('{}W{} MON'.format(year, week), '%YW%U %a')
-            dtm = datetime.datetime.strptime('{}-W{}'.format(year, week) + '-0', "%Y-W%W-%w").date()
-            build_date = datetime.datetime.strftime(dtm, "%Y%m%d")
-
-            # How many years (2 float) is the monitor old
-            age_years = round((datetime.date.today() - dtm) / datetime.timedelta(days=365.2425), 2)
-
-            monitors.append(monitor(
-                connector=conn, name=name, resolution=resol, serial=serial_number, build=build_date, age=age_years)
-            )
-            filename = join(abspath(curdir), 'EDID__{host}__{connector}__{name}__{resol}__{serial}__{build}'.format(
-                host=self.hostname, connector=conn, name=name, resol=resol, serial=serial_number, build=build_date))
-            with open(filename, 'w') as f:
-                f.writelines(edid)
-                f.write('\n')
-                f.write('=' * 70)
-                f.write('\n')
-                f.writelines(['{line}\n'.format(line=line) for line in edid_decoded])
-            # os.remove(filename)
-        return monitors
-
-    @property
-    def local_ip(self):
-        return self.results.get('local_ip')
-
-    @property
-    def public_ip(self):
-        return self.results.get('public_ip')
-
-    @property
-    def uptime(self):
-        uptime_time = self.results.get('uptime_all').split(',')[0]
-        return ' '.join(uptime_time.split()[2:])
-
-    @property
-    def drives(self):
-        ret = self.results.get('drives').splitlines()[1:]
-        size = [drive.strip().split()[2] for drive in ret]
-        serial = [drive.strip().split()[4] for drive in ret]
-        name = ['_'.join(drive.strip().split()[5:]) for drive in ret]
-
-        drive = collections.namedtuple('drive', ['size', 'serial', 'name'])
-        drives = []
-        for size, serial, name in zip(size, serial, name):
-            drives.append(drive(size, serial, name))
-        return drives
-
-    @property
-    def memory(self):
-        ret = self.results.get('dmi_memory_array').splitlines()
-        size = [line.split(':')[1].strip() for line in ret if 'Range Size: ' in line][0]
-        return size
-
-    @property
-    def computer_age(self):
-        ret = self.results.get('dmi_bios').splitlines()
-        release = [line.split(':')[1].strip() for line in ret if 'Release Date: ' in line][0]
-        return release
-
-    @property
-    def warranty_status(self):
-        # dtm = datetime.datetime.strptime('{}-W{}'.format(year, week) + '-0', "%Y-W%W-%w").date()
-        # build_date = datetime.datetime.strftime(dtm, "%Y%m%d")
-
-        # age_years = round((datetime.date.today() - dtm) / datetime.timedelta(days=365.2425), 2)
-        year, day, month = [int(item) for item in self.computer_age.split('/')[::-1]]
-        release_date = datetime.date(year, month, day)
-        today = datetime.date.today()
-        age_years = round((today - release_date) / datetime.timedelta(days=365.2425), 1)
-        if age_years < 5:
-            return (age_years, True)
-        return (age_years, '')
+# timeout = 5  # timeout for ncat in sec
 
 
 def main():
@@ -289,35 +108,72 @@ def main():
     pool.close()
     pool.join()
 
-    print("Done!")
-    print('{: <10}{: <10}{: <10}{: <15}{: <8}{: <12}{: <9}{: <5}'.format(
-        'Host', 'Received', 'Location', 'CPU details', 'Memory', 'Built Date', 'Warranty', 'Age'))
+    # print("Done!")
+    # print('{: <10}{: <15}{: <8}{: <12}{: <9}{: <5}'.format(
+    #       'Host', 'CPU details', 'Memory', 'Built Date', 'Warranty', 'Age'))
+
+    print(f'{"Host":<15}{"Memory":<15}{"Computer Age":<20}{"User":<20}{"Monitor Serials":<20}')
 
     for item in results:
-        # try:
+        item: Host
         if not item.received:
-            print('{host: <10}{received: <10}'.format(
-                host=item.hostname, received=str(item.received)))
+            # print()
+            print(f'{item.hostname: <15}cannot connect...')
             continue
-        # print()
-        # print('DEBUG: item.hostname:', item.hostname)
-        # print('DEBUG: item.received:', item.received)
-        # print('DEBUG: item.location:', item.location)
-        # print('DEBUG: item.cpu_details:', item.cpu_details)
-        # print('{host: <10}{received: <10}{location: <10}{cpu_details: <15}{memory: <8}'
-        #       '{built_date: <12}{warranty: <9}{age: <5}'.format(
-        #           host=item.hostname, received=str(item.received), location=item.location,
-        #           cpu_details=item.cpu_details, memory=item.memory, built_date=item.computer_age,
-        #           warranty=str(item.warranty_status[1]), age=item.warranty_status[0]))
 
-        print(item.hostname, item.cpu_name, item.gpu_name, item.gpu_driver)
-        # print(item.os)
-        # print(item.monitor)
-        # print(item.uptime)
+        # TESTS
+        #==============================================================
+        # print()
+        # print('{host: <10}{cpu_details: <15}{memory: <8}'
+        #       '{built_date: <12}{warranty: <9}{age: <5}'.format(
+        #           host=item.hostname, cpu_details=item.cpu_details, memory=item.memory,
+        #           built_date=item.computer_age, warranty=str(item.warranty_status[1]),
+        #           age=item.warranty_status[0]))
         # print("[{size}] - {name}".format(size=item.drives[0].size, name=item.drives[0].name))
         # except Exception as e:
         #     print('Exception: {}'.format(e))
         #     continue
+
+        # ALL INFORMATION
+        #==============================================================
+        # print("")
+        # print("DEBUG: item.hostname:", item.hostname)
+        # print("DEBUG: item.location:", item.location)
+        # print("DEBUG: item.cpu_name:", item.cpu_name)
+        # print("DEBUG: item.cpu_details:", item.cpu_details)
+        # print("DEBUG: item.cpu_ghz:", item.cpu_ghz)
+        # print("DEBUG: item.gpu_name:", item.gpu_name)
+        # print("DEBUG: item.gpu_driver:", item.gpu_driver)
+        # print("DEBUG: item.os:", item.os)
+        # print("DEBUG: item.kernel:", item.kernel)
+        # print("DEBUG: item.monitor:", item.monitor)
+        # print("DEBUG: item.local_ip:", item.local_ip)
+        # print("DEBUG: item.public_ip:", item.public_ip)
+        # print("DEBUG: item.uptime:", item.uptime)
+        # print("DEBUG: item.drives:", item.drives)
+        # print("DEBUG: item.memory:", item.memory)
+        # print("DEBUG: item.computer_age:", item.computer_age)
+        # print("DEBUG: item.warranty_status:", item.warranty_status)
+        # print("DEBUG: item.system_name:", item.system_name)
+        # print("DEBUG: item.system_user:", item.system_user)
+
+        # EXCEL format
+        #==============================================================
+        print()
+        print(item.system_user)
+        print(item.hostname, item.memory)
+        print(item.cpu_details)
+        print(item.os)
+        print(item.system_name, item.cpu_ghz)
+        print(item.gpu_driver)
+
+        # EXCEL Table
+        #==============================================================
+        # try:
+        #     monitor_serials = ', '.join([val.serial for val in item.monitor])
+        #     print(f'{item.hostname:<15}{item.memory.split()[0]:<15}{item.computer_age:<20}{item.system_user:<20}{monitor_serials:20}')
+        # except Exception:
+        #     print(f'{item.hostname:<15}failed... for some reason.')
 
 
 if __name__ == '__main__':
