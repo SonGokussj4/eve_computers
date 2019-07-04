@@ -63,7 +63,7 @@
 """
 
 from multiprocessing import Pool, cpu_count
-from Host import Host
+from myclass import Host
 
 # DELL WARRANTY
 # https://gist.github.com/teroka/0720274b87b77fe7171f
