@@ -71,37 +71,38 @@ from Host import Host
 #=========================================
 # C2
 #=========================================
-hosts = [
+hosts_C2 = sorted([
     'winder',
     'ogg', 'koch', 'tigerfly',
     'klatch', 'nina', 'moist', 'sarita',
     'nindra', 'morpork', 'sybil',
     'cohen', 'winvoe', 'gapa', 'dorfl',
-    'modo', 'sally',
-    'cuddy', 'havelock', 'tacticus',
-    'coin',
-]
-# Windows: 'susan', 'kwinta'
+    'modo', 'sally', 'carrot',
+    'cuddy', 'havelock', 'tacticus', 'esme',
+    'eskymak', 'swires', 'varanga', 'sydeney',
+    'tigerwood',
+])
+# Windows: 'SUSAN', 'KWINTA', 'RHODOPE', 'GAZELLE'
 
 #=========================================
 # C6
 #=========================================
-# hosts = [
-#     'samuel', 'detritus', 'buckleby',
-#     'hrun', 'shelly', 'fate',
-#     'bucket', 'ego', 'shawn',
-#     'quirm', 'quoth', 'klotz', 'morkie'
-# ]
-# Windows:
+hosts_C6 = sorted([
+    'samuel', 'detritus', 'buckleby',
+    'hrun', 'shelly', 'fate',
+    'bucket', 'ego', 'shawn',
+    'quirm', 'quoth', 'klotz', 'morkie',
+    'coin', 'esk', 'sarina', 'samara', 'myron', 'lemur',
+])
+# Windows: 'KIPPER'
+hosts = sorted(hosts_C2 + hosts_C6)
 
-#=========================================
-# Dalsi
-#=========================================
-# hosts = [
-#     'esme', 'gemma', 'esk', 'sarina', 'myron', 'eskymak'
-# ]
-# Windows:
-
+# CHYBEJICI
+# hosts = sorted([
+#     'eskymak', 'galaxy', 'carrot', 'gluon', 'gazelle', 'kwinta',
+#     'morpork', 'ogg', 'ook', 'rhodope', 'susan', 'sydeney', 'varanga',
+#     'esk', 'kipper', 'lemur',
+# ])
 # timeout = 5  # timeout for ncat in sec
 
 
@@ -115,13 +116,14 @@ def main():
     # print('{: <10}{: <15}{: <8}{: <12}{: <9}{: <5}'.format(
     #       'Host', 'CPU details', 'Memory', 'Built Date', 'Warranty', 'Age'))
 
-    print(f'{"Host":<15}{"Memory":<15}{"Computer Age":<20}{"User":<20}{"Monitor Serials":<20}')
+    print(f'{"Host":<15}{"CPU Proc":<20}{"Memory":<15}{"Buy Date":<20}{"Age":<15}{"User":<20}{"Monitor Serials":<20}')
 
     for item in results:
         item: Host
         if not item.received:
             # print()
-            print(f'{item.hostname: <15}cannot connect...')
+            # print(f'{item.hostname: <15}cannot connect...')
+            print(f'{item.hostname}')
             continue
 
         # TESTS
@@ -162,21 +164,27 @@ def main():
 
         # EXCEL format
         #==============================================================
-        print()
-        print(item.system_user)
-        print(item.hostname, item.memory)
-        print(item.cpu_details)
-        print(item.os)
-        print(item.system_name, item.cpu_ghz)
-        print(item.gpu_driver)
+        # print()
+        # print(item.system_user)
+        # print(item.hostname, item.memory)
+        # print(item.cpu_details)
+        # print(item.os)
+        # print(item.system_name, item.cpu_ghz)
+        # print(item.gpu_driver)
 
         # EXCEL Table
         #==============================================================
-        # try:
-        #     monitor_serials = ', '.join([val.serial for val in item.monitor])
-        #     print(f'{item.hostname:<15}{item.memory.split()[0]:<15}{item.computer_age:<20}{item.system_user:<20}{monitor_serials:20}')
-        # except Exception:
-        #     print(f'{item.hostname:<15}failed... for some reason.')
+        try:
+            monitor_serials = ', '.join([val.serial for val in item.monitor])
+            # print(f'{item.hostname:<15};{item.cpu_details:<20};{item.memory.split()[0]:<15};'
+            #       f'{item.computer_age:<20};{item.warranty_status[0]:<15};'
+            #       f'{item.system_user:<20};{monitor_serials:20}')
+            print(f'{item.hostname};{item.cpu_details.split(" ")[0]} {item.cpu_ghz};{item.memory.split()[0]};'
+                  f'{item.computer_age};{item.warranty_status[0]};'
+                  f'{item.system_user};{monitor_serials}')
+
+        except Exception as e:
+            print(f'{item.hostname};failed... for some reason;{e}')
 
 
 if __name__ == '__main__':
